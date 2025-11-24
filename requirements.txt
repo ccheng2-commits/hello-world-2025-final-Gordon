@@ -1,0 +1,16 @@
+# IRIS#1 - Digital Biometrics
+# Python dependencies for backend processing
+
+# Image processing and computer vision
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# Numerical computing and FFT
+numpy>=1.24.0
+
+# File system watching
+watchdog>=3.0.0
+
+# Visualization (for FFT spectrum images)
+matplotlib>=3.7.0
+
