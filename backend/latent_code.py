@@ -13,6 +13,7 @@ import cv2
 from pathlib import Path
 import json
 from backend.config import CODES_DIR, LATENT_CODE_VERSION, LATENT_SEED_BASE
+from backend.generate_codes_index import save_codes_index
 
 
 def extract_image_features(image_path):
@@ -254,6 +255,12 @@ def save_latent_code(latent_code, features, seed, output_filename=None):
     txt_path = CODES_DIR / output_filename.replace('.json', '.txt')
     with open(txt_path, 'w') as f:
         f.write(latent_code)
+    
+    # Update codes index for frontend
+    try:
+        save_codes_index()
+    except Exception as e:
+        print(f"Warning: Could not update codes index: {e}")
     
     print(f"✓ Latent code saved: {output_path.name}")
     return output_path

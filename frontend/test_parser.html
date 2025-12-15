@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Latent Code Parser</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .test-case {
+            margin: 20px 0;
+            padding: 15px;
+            background: #2a2a2a;
+            border-radius: 5px;
+        }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+        pre { background: #000; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Latent Code Parser Test</h1>
+    <div id="results"></div>
+
+    <script src="iris_renderer.js"></script>
+    <script>
+        // Test cases
+        const testCodes = [
+            "IRIS/I?SEED=4821640GHO=67GDH=83GRO=1.023GRING=0.500GTEX=0.015G/1=0.010",
+            "IRIS/I?SEED=635037019GHO=34GDH=55GRO=1.054GRING=0.500GTEX=0.002G/1=0.010",
+            "IRIS/I?SEED=926357696GHO=47GDH=61GRO=1.336GRING=0.500GTEX=0.002G/1=0.010"
+        ];
+
+        const resultsDiv = document.getElementById('results');
+        let allPassed = true;
+
+        testCodes.forEach((code, index) => {
+            const testDiv = document.createElement('div');
+            testDiv.className = 'test-case';
+            
+            try {
+                const params = parseLatentCode(code);
+                
+                // Check if all required parameters are present
+                const required = ['seed', 'H0', 'dH', 'R0', 'ring', 'tex', 'λ'];
+                const missing = required.filter(key => params[key] === undefined);
+                
+                if (missing.length === 0) {
+                    testDiv.innerHTML = `
+                        <div class="success">✅ Test ${index + 1}: PASSED</div>
+                        <pre>Code: ${code}</pre>
+                        <pre>Parsed: ${JSON.stringify(params, null, 2)}</pre>
+                    `;
+                } else {
+                    testDiv.innerHTML = `
+                        <div class="error">❌ Test ${index + 1}: FAILED - Missing: ${missing.join(', ')}</div>
+                        <pre>Code: ${code}</pre>
+                        <pre>Parsed: ${JSON.stringify(params, null, 2)}</pre>
+                    `;
+                    allPassed = false;
+                }
+            } catch (error) {
+                testDiv.innerHTML = `
+                    <div class="error">❌ Test ${index + 1}: ERROR</div>
+                    <pre>Code: ${code}</pre>
+                    <pre>Error: ${error.message}</pre>
+                `;
+                allPassed = false;
+            }
+            
+            resultsDiv.appendChild(testDiv);
+        });
+
+        // Summary
+        const summary = document.createElement('div');
+        summary.className = 'test-case';
+        summary.style.marginTop = '30px';
+        summary.innerHTML = allPassed 
+            ? '<div class="success"><h2>✅ All tests passed!</h2></div>'
+            : '<div class="error"><h2>❌ Some tests failed</h2></div>';
+        resultsDiv.appendChild(summary);
+    </script>
+</body>
+</html>

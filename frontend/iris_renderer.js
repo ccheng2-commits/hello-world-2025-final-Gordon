@@ -6,31 +6,75 @@
 
 /**
  * Parse a latent code string into parameters
- * Format: IRIS/1?seed=2481739201&H0=212&dH=18&R0=0.41&ring=0.27&tex=0.63&λ=0.010
+ * 
+ * Supports two formats:
+ * - New format (from backend): IRIS/I?SEED=2481739201GHO=212GDH=18GRO=0.410GRING=0.270GTEX=0.630G/1=0.010
+ * - Old format (legacy):       IRIS/1?seed=2481739201&H0=212&dH=18&R0=0.41&ring=0.27&tex=0.63&λ=0.010
  */
 function parseLatentCode(latentCode) {
     const params = {};
     
-    // Extract seed
-    const seedMatch = latentCode.match(/seed=(\d+)/);
-    if (seedMatch) {
-        params.seed = parseInt(seedMatch[1]);
-    }
+    // Detect format: new format uses "SEED=" (uppercase), old uses "seed=" (lowercase)
+    const isNewFormat = latentCode.includes('SEED=') || latentCode.includes('GHO=');
     
-    // Extract other parameters
-    const paramPatterns = {
-        'H0': /H0=(\d+)/,
-        'dH': /dH=(\d+)/,
-        'R0': /R0=([\d.]+)/,
-        'ring': /ring=([\d.]+)/,
-        'tex': /tex=([\d.]+)/,
-        'λ': /λ=([\d.]+)/
-    };
-    
-    for (const [key, pattern] of Object.entries(paramPatterns)) {
-        const match = latentCode.match(pattern);
-        if (match) {
-            params[key] = parseFloat(match[1]);
+    if (isNewFormat) {
+        // === New format: IRIS/I?SEED=...GHO=...GDH=...GRO=...GRING=...GTEX=...G/1=... ===
+        
+        // Extract SEED
+        const seedMatch = latentCode.match(/SEED=(\d+)/);
+        if (seedMatch) {
+            params.seed = parseInt(seedMatch[1]);
+        }
+        
+        // Extract parameters (new naming: GHO, GDH, GRO, GRING, GTEX, G/1)
+        const newParamPatterns = {
+            'GHO': /GHO=(-?[\d.]+)/,
+            'GDH': /GDH=(-?[\d.]+)/,
+            'GRO': /GRO=(-?[\d.]+)/,
+            'GRING': /GRING=(-?[\d.]+)/,
+            'GTEX': /GTEX=(-?[\d.]+)/,
+            'G/1': /G\/1=(-?[\d.]+)/
+        };
+        
+        for (const [key, pattern] of Object.entries(newParamPatterns)) {
+            const match = latentCode.match(pattern);
+            if (match) {
+                params[key] = parseFloat(match[1]);
+            }
+        }
+        
+        // Map new names to internal names for renderer
+        params.H0 = params.GHO || 128;
+        params.dH = params.GDH || 50;
+        params.R0 = params.GRO || 0.5;
+        params.ring = params.GRING || 0.5;
+        params.tex = params.GTEX || 0.5;
+        params['λ'] = params['G/1'] || 0.5;
+        
+    } else {
+        // === Old format: IRIS/1?seed=...&H0=...&dH=...&R0=...&ring=...&tex=...&λ=... ===
+        
+        // Extract seed
+        const seedMatch = latentCode.match(/seed=(\d+)/);
+        if (seedMatch) {
+            params.seed = parseInt(seedMatch[1]);
+        }
+        
+        // Extract other parameters
+        const paramPatterns = {
+            'H0': /H0=(\d+)/,
+            'dH': /dH=(\d+)/,
+            'R0': /R0=([\d.]+)/,
+            'ring': /ring=([\d.]+)/,
+            'tex': /tex=([\d.]+)/,
+            'λ': /λ=([\d.]+)/
+        };
+        
+        for (const [key, pattern] of Object.entries(paramPatterns)) {
+            const match = latentCode.match(pattern);
+            if (match) {
+                params[key] = parseFloat(match[1]);
+            }
         }
     }
     

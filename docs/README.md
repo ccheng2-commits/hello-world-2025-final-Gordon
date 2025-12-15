@@ -2,137 +2,231 @@
 
 Interactive installation for MFA Interaction Design "Hello World" final project.
 
-## Project Overview
+## Overview
 
-IRIS#1 transforms a visitor's iris photograph into a unique generative "Digital Iris" - a looping, animated circular pattern that represents their biometric signature.
+IRIS#1 transforms a visitor's iris photograph into a unique generative "Digital Iris" - a looping, animated circular pattern representing their biometric signature.
 
-### Concept
+**Workflow:**
+1. Iris photographed with DSLR → saved to `data/incoming/`
+2. Python backend processes: detects pupil → extracts Safe Zone ring → computes FFT → generates waveform
+3. Web frontend renders Digital Iris from waveform data
+4. Added to "Digital Iris Wall" gallery
 
-1. Visitor's iris is photographed with DSLR (Canon 5D Mark IV + 60mm macro)
-2. Photo is automatically sent to Mac mini
-3. Python backend processes the image:
-   - Detects and crops iris region
-   - Computes 2D FFT (Fast Fourier Transform)
-   - Extracts features and generates latent code
-4. Web frontend renders the Digital Iris from the latent code
-5. New Digital Iris is added to the "Digital Iris Wall" gallery
+## Architecture Flow
+
+```mermaid
+graph TD
+
+    %% --- Phase 1: Capture (Physical Input) ---
+
+    User((User)) -->|Gaze & Chin Rest| Camera["📷 Camera\nCanon 5D / A7R2"]
+
+    Camera -->|USB Tethering| Incoming[📂 Folder: /incoming]
+
+
+
+    %% --- Phase 2: Python Backend (The Brain) ---
+
+    subgraph "🐍 Python Backend (The Brain)"
+
+        Incoming -.->|Watchdog Detects| Watcher{{Watcher Script}}
+
+        Watcher -->|Trigger| Processor["⚙️ Image Processor\nOpenCV"]
+
+        
+
+        %% OpenCV Logic
+
+        Processor -->|Grayscale & Blur| PreOp(Pre-processing)
+
+        PreOp -->|Find Darkest Blob| PupilDet(Pupil Detection)
+
+        PupilDet -->|Dynamic Masking| Donut["🍩 Donut Masking\n(Safe Zone Extraction)"]
+
+        Donut -->|Crop 2048x2048| CropImg(Processed Iris Image)
+
+
+
+        %% Analysis Logic
+
+        CropImg -->|Pass Image| Analyzer["📊 FFT Analyzer\nNumPy"]
+
+        Analyzer -->|FFT Transform| Spectrum(2D Spectrum)
+
+        Spectrum -->|Radial Avg| Waveform(1D Waveform Array)
+
+        Spectrum -->|Hash Pixels| Seed(Unique Seed ID)
+        
+        %% Latent Code Generation
+        CropImg -->|Extract Features| CodeGen["🔑 Latent Code Generator\nlatent_code.py"]
+        Spectrum -->|FFT Features| CodeGen
+        CodeGen -->|Generate| LatentCode["📝 Latent Code\nIRIS/I?SEED=...GHO=..."]
+        
+        %% Codes Index Generation
+        LatentCode -->|Auto Update| IndexGen["📋 Codes Index Generator\ngenerate_codes_index.py"]
+        IndexGen -->|Create| CodesIndex["📄 codes_index.json"]
+
+    end
+
+
+
+    %% --- Phase 3: Data Handoff (Data Exchange) ---
+
+    CropImg -->|Save .jpg| OutFolder[📂 Folder: /processed]
+
+    Waveform & Seed -->|Save .json| OutFolder
+    
+    LatentCode -->|Save .txt/.json| CodesFolder[📂 Folder: /codes]
+    
+    CodesIndex -->|Save| CodesFolder
+
+
+
+    %% --- Phase 4: Frontend (Visual Presentation) ---
+
+    subgraph "🎨 p5.js Frontend (The Face)"
+
+        Server[🌐 HTTP Server\nstart_server.py] -->|Hosts| Sketch(sketch.js)
+
+        CodesIndex -.->|loadJSON<br/>Auto-refresh 5s| Sketch
+        
+        OutFolder -.->|loadJSON & loadImage| Sketch
+
+        Sketch -->|Parse Code| Renderer["🎨 Iris Renderer\niris_renderer.js"]
+        
+        Renderer -->|Map Parameters| Visual(Generative Iris)
+
+        Visual -->|Render| Screen["🖥️ Digital Wall / Monitor"]
+
+    end
+
+
+
+    %% Styles
+
+    style Incoming fill:#f9f,stroke:#333,stroke-width:2px
+
+    style OutFolder fill:#f9f,stroke:#333,stroke-width:2px
+    
+    style CodesFolder fill:#f9f,stroke:#333,stroke-width:2px
+    
+    style CodesIndex fill:#9f9,stroke:#333,stroke-width:2px
+
+    style Donut fill:#ff9,stroke:#f66,stroke-width:2px,stroke-dasharray: 5 5
+
+    style Analyzer fill:#ccf,stroke:#333,stroke-width:2px
+    
+    style CodeGen fill:#9cf,stroke:#333,stroke-width:2px
+    
+    style IndexGen fill:#cf9,stroke:#333,stroke-width:2px
+    
+    style Server fill:#fcf,stroke:#333,stroke-width:2px
+```
+
+## Quick Start
+
+### Backend
+
+```bash
+# Setup
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Process photos
+python -m backend.iris_processor  # Process all images in data/incoming/
+python -m backend.watch_folder    # Auto-process new photos
+```
+
+**Output:** `data/processed/iris-001.jpg`, `iris-002.jpg`, ... (2048x2048)
+
+### Frontend
+
+**Option 1: Use the project server (recommended)**
+```bash
+python3 start_server.py
+# Open http://localhost:8000
+```
+
+**Option 2: Use Live Server or Python HTTP server**
+```bash
+cd frontend
+python3 -m http.server 8000
+# Open http://localhost:8000/index.html
+```
+
+**Controls:** 
+- SPACE: Simulate capture (generates new Digital Iris)
+- T: Test transform with random code
+- R: Reset to EXHIBIT state
+- C: Reload codes from backend
+
+**Auto-refresh:** Frontend automatically loads codes from `data/codes_index.json` every 5 seconds.
 
 ## Project Structure
 
 ```
-iris1-digital-biometrics/
-├─ backend/                # Python processing pipeline
-│  ├─ watch_folder.py      # Watches for new photos
-│  ├─ iris_processor.py    # Crop iris region
-│  ├─ fft_pipeline.py      # Compute FFT and visualization
-│  ├─ latent_code.py       # Generate latent code strings
-│  ├─ config.py            # Configuration
-│  └─ tests/
-│
-├─ frontend/               # Web interface (p5.js)
-│  ├─ index.html
-│  ├─ sketch.js           # Main p5.js sketch
+├─ backend/          # Python processing pipeline
+│  ├─ watch_folder.py      # File watcher, triggers processing
+│  ├─ iris_processor.py   # Pupil detection, donut masking (Safe Zone)
+│  ├─ analysis.py         # FFT analysis, waveform extraction
+│  ├─ fft_pipeline.py     # FFT visualization
+│  ├─ latent_code.py      # Latent code generation
+│  └─ config.py           # Configuration
+├─ frontend/         # p5.js web interface
+│  ├─ sketch.js           # Main sketch, state machine
 │  ├─ iris_renderer.js    # Digital Iris renderer
 │  └─ ui_state_machine.js # UI state management
-│
-├─ data/                   # Runtime data (not in git)
-│  ├─ incoming/            # Raw photos
-│  ├─ processed/           # Cropped irises
-│  ├─ fft/                 # FFT visualizations
-│  ├─ codes/               # Latent codes
-│  └─ logs/                # Logs
-│
-└─ docs/                   # Documentation
+├─ data/            # Runtime data
+│  ├─ incoming/     # Raw photos from camera
+│  ├─ processed/    # Processed images & analysis JSON
+│  ├─ fft/          # FFT visualizations
+│  └─ codes/        # Latent codes
+└─ docs/            # Documentation (see ARCHITECTURE.md for flow diagram)
 ```
 
-## Setup
+## Features
 
-### Backend Setup
-
-1. Install Python dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-2. Place test iris photos in `data/incoming/`
-
-3. Run processing pipeline:
-```bash
-# Process a single image
-python -m backend.iris_processor
-python -m backend.fft_pipeline
-python -m backend.latent_code
-```
-
-### Frontend Setup
-
-1. Open `frontend/index.html` in a web browser
-2. Or use a local server:
-```bash
-cd frontend
-python -m http.server 8000
-# Then open http://localhost:8000
-```
-
-## State Machine
-
-The frontend uses a state machine with these states:
-
-- **EXHIBIT**: Shows Digital Iris Wall (gallery)
-- **CAPTURE**: Capturing screen
-- **TRANSFORM**: Algorithm running (shows iris + FFT)
-- **DISPLAY_SINGLE**: Shows new visitor's Digital Iris
-- **UPDATE_EXHIBIT**: Brief transition to add to wall
-
-## Testing
-
-### Frontend Testing
-
-- Press **SPACE** to simulate capture
-- Press **T** to test transform directly
-- Press **R** to reset to exhibit
-
-### Backend Testing
-
-Each module can be run independently for testing:
-- `iris_processor.py` - processes images in `data/incoming/`
-- `fft_pipeline.py` - computes FFT for images in `data/processed/`
-- `latent_code.py` - generates codes for images in `data/processed/`
+✅ Safe Zone ring extraction (pupil detection, donut masking)  
+✅ High-resolution output (2048x2048)  
+✅ FFT analysis with 1D waveform extraction (64 points)  
+✅ Feature extraction (seed, energy, complexity, waveform)  
+✅ Latent code generation (`IRIS/I?SEED=...GHO=...GDH=...`)  
+✅ Frontend state machine and Digital Iris renderer  
 
 ## Latent Code Format
 
-Latent codes encode iris features into a string:
 ```
-IRIS/1?seed=2481739201&H0=212&dH=18&R0=0.41&ring=0.27&tex=0.63&λ=0.010
+IRIS/I?SEED=2481739201GHO=212GDH=18GRO=0.41GRING=0.27GTEX=0.63G/1=0.010
 ```
 
-Parameters:
-- `seed`: Deterministic seed for generative pattern
-- `H0`: Average brightness
-- `dH`: Contrast
-- `R0`: Radial structure ratio
-- `ring`: Ring pattern energy
-- `tex`: Texture complexity
-- `λ`: Frequency balance
+Each iris generates a unique code. Parameters: SEED, GHO (brightness), GDH (contrast), GRO (radial), GRING (ring), GTEX (texture), G/1 (frequency).
 
-## MVP Features
+## Status
 
-✅ Working frontend state machine  
-✅ Digital Iris renderer from latent code  
-✅ Basic Python processing pipeline  
-✅ Simple center crop (no pupil detection yet)  
-✅ FFT computation and visualization  
-✅ Latent code generation  
+- Backend: ~95% complete ✅
+- Frontend: ~90% complete ✅
+- Integration: ~90% complete ✅ (frontend reads codes from backend)
 
-## Future Enhancements
+## Work Log
 
-- Real-time camera integration
-- Automatic pupil detection
-- More sophisticated feature extraction
-- 3D rendering options
-- Physical output printing
+### 2024-12-01: Complete Integration
+- ✅ Created `generate_codes_index.py` to generate JSON index for frontend
+- ✅ Updated frontend to load codes from backend via HTTP
+- ✅ Added auto-refresh mechanism (every 5 seconds)
+- ✅ Created `start_server.py` for easy project serving
+- ✅ Backend automatically updates codes index when new codes are generated
+- ✅ Frontend supports multiple URL paths for different server setups
+- ✅ Complete end-to-end workflow: Backend → JSON → Frontend → Display
+
+### 2024-12-01: Extract Real Pupil, Get Donut Ring
+- ✅ Implemented robust pupil detection (multiple threshold strategies: OTSU, adaptive, simple)
+- ✅ Created Safe Zone ring extraction (donut mask: 1.1x to 2.2x pupil radius)
+- ✅ Upgraded output resolution to 2048x2048 pixels
+- ✅ Added automatic sequential file naming (iris-001.jpg, iris-002.jpg, ...)
+- ✅ High-quality image interpolation (LANCZOS4 for upscaling, CUBIC for downscaling)
+- ✅ Successfully extracts clean iris ring, avoiding eyelids and eyelashes
 
 ## Notes
 
-This is a learning project. Code is structured to be beginner-friendly with clear comments and incremental complexity.
-
+Learning project with beginner-friendly code structure and clear comments.

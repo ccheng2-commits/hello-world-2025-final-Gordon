@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IRIS#1 - Processing Visualization</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #fff;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #0ff;
+            font-size: 32px;
+        }
+        
+        .iris-selector {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .iris-selector select {
+            padding: 10px 20px;
+            font-size: 16px;
+            background: #1a1a1a;
+            color: #fff;
+            border: 2px solid #0ff;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .panel {
+            background: #1a1a1a;
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            position: relative;
+        }
+        
+        .panel h2 {
+            color: #0ff;
+            margin-bottom: 15px;
+            font-size: 20px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+        
+        .image-container {
+            width: 100%;
+            height: 400px;
+            background: #000;
+            border: 1px solid #333;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .image-container img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        .code-display {
+            background: #000;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #333;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            word-break: break-all;
+            color: #0ff;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .info {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #888;
+        }
+        
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .loading {
+            color: #888;
+            text-align: center;
+            padding: 50px;
+        }
+        
+        .error {
+            color: #f00;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>IRIS#1 - Processing Visualization</h1>
+        
+        <div class="iris-selector">
+            <label for="iris-select">Select Iris: </label>
+            <select id="iris-select">
+                <option value="">Loading...</option>
+            </select>
+        </div>
+        
+        <div id="content" class="grid">
+            <div class="panel">
+                <h2>1. Original Image</h2>
+                <div class="image-container" id="original-container">
+                    <div class="loading">Select an iris to view</div>
+                </div>
+                <div class="info" id="original-info"></div>
+            </div>
+            
+            <div class="panel">
+                <h2>2. Donut (Safe Zone)</h2>
+                <div class="image-container" id="donut-container">
+                    <div class="loading">Select an iris to view</div>
+                </div>
+                <div class="info" id="donut-info"></div>
+            </div>
+            
+            <div class="panel">
+                <h2>3. FFT Spectrum (Animated)</h2>
+                <div class="image-container" id="fft-container">
+                    <div id="fft-sketch"></div>
+                </div>
+                <div class="info" id="fft-info"></div>
+            </div>
+            
+            <div class="panel">
+                <h2>4. Digital Iris (Animated)</h2>
+                <div class="image-container" id="iris-container">
+                    <div id="iris-sketch"></div>
+                </div>
+                <div class="info" id="iris-info"></div>
+            </div>
+            
+            <div class="panel full-width">
+                <h2>5. Latent Code</h2>
+                <div class="code-display" id="code-display">
+                    Select an iris to view latent code
+                </div>
+                <div class="info" id="code-info"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- p5.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    
+    <!-- Our scripts -->
+    <script src="iris_renderer.js"></script>
+    
+    <script>
+        // Global state
+        let irisData = [];
+        let currentIris = null;
+        let irisRenderer = null;
+        let fftSketch = null;
+        let irisSketch = null;
+        let currentWaveform = [];
+        let currentFFTImage = null;
+        let animationTime = 0;
+        
+        // Load iris data
+        async function loadIrisData() {
+            try {
+                const response = await fetch('/data/codes_index.json');
+                const data = await response.json();
+                irisData = data.codes || [];
+                
+                // Populate selector
+                const select = document.getElementById('iris-select');
+                select.innerHTML = '<option value="">Select an iris...</option>';
+                
+                irisData.forEach((iris, index) => {
+                    const option = document.createElement('option');
+                    // Handle different ID formats: "iris-001" or timestamp "1765752674"
+                    let displayId = iris.id;
+                    if (iris.id.startsWith('iris-')) {
+                        displayId = iris.id;
+                    } else if (/^\d+$/.test(iris.id)) {
+                        // It's a timestamp, try to find corresponding iris number
+                        displayId = `iris-${iris.id}`;
+                    }
+                    option.value = index;
+                    option.textContent = displayId;
+                    select.appendChild(option);
+                });
+                
+                console.log(`Loaded ${irisData.length} irises`);
+            } catch (error) {
+                console.error('Error loading iris data:', error);
+                document.getElementById('iris-select').innerHTML = '<option value="">Error loading data</option>';
+            }
+        }
+        
+        // Load and display iris
+        async function loadIris(index) {
+            if (index < 0 || index >= irisData.length) return;
+            
+            currentIris = irisData[index];
+            // Extract iris number from ID (handle both "iris-001" and timestamp formats)
+            let irisId;
+            if (currentIris.id.startsWith('iris-')) {
+                irisId = currentIris.id.replace('iris-', '').padStart(3, '0');
+            } else {
+                // For timestamp IDs, try to find the iris number from metadata or use the ID as-is
+                irisId = currentIris.metadata?.iris_id || currentIris.id;
+                // If it's a number, try to map it (this is a fallback)
+                if (/^\d+$/.test(irisId)) {
+                    // Use the index + 1 as iris number for display
+                    irisId = String(index + 1).padStart(3, '0');
+                }
+            }
+            
+            // Load original image using fetch and create img element
+            fetch(`/data/renamed/incoming-${irisId}.jpg`)
+                .then(response => {
+                    if (response.ok) {
+                        return response.blob();
+                    }
+                    throw new Error('Image not found');
+                })
+                .then(blob => {
+                    const url = URL.createObjectURL(blob);
+                    const container = document.getElementById('original-container');
+                    container.innerHTML = '';
+                    const img = document.createElement('img');
+                    img.src = url;
+                    img.style.maxWidth = '100%';
+                    img.style.maxHeight = '100%';
+                    img.style.objectFit = 'contain';
+                    img.onload = () => {
+                        document.getElementById('original-info').textContent = 
+                            `Size: ${img.naturalWidth}x${img.naturalHeight}px`;
+                    };
+                    container.appendChild(img);
+                })
+                .catch(() => {
+                    document.getElementById('original-container').innerHTML = 
+                        '<div class="error">Original image not found</div>';
+                });
+            
+            // Load donut image
+            fetch(`/data/processed/iris-${irisId}.jpg`)
+                .then(response => {
+                    if (response.ok) {
+                        return response.blob();
+                    }
+                    throw new Error('Image not found');
+                })
+                .then(blob => {
+                    const url = URL.createObjectURL(blob);
+                    const container = document.getElementById('donut-container');
+                    container.innerHTML = '';
+                    const img = document.createElement('img');
+                    img.src = url;
+                    img.style.maxWidth = '100%';
+                    img.style.maxHeight = '100%';
+                    img.style.objectFit = 'contain';
+                    img.onload = () => {
+                        document.getElementById('donut-info').textContent = 
+                            `Size: ${img.naturalWidth}x${img.naturalHeight}px | Safe Zone Ring`;
+                    };
+                    container.appendChild(img);
+                })
+                .catch(() => {
+                    document.getElementById('donut-container').innerHTML = 
+                        '<div class="error">Donut image not found</div>';
+                });
+            
+            // Load FFT image for p5.js sketch
+            fetch(`/data/fft/fft_iris-${irisId}.jpg`)
+                .then(response => {
+                    if (response.ok) {
+                        return response.blob();
+                    }
+                    throw new Error('FFT image not found');
+                })
+                .then(blob => {
+                    const url = URL.createObjectURL(blob);
+                    const img = new Image();
+                    img.onload = () => {
+                        currentFFTImage = img;
+                    };
+                    img.src = url;
+                })
+                .catch(() => {
+                    currentFFTImage = null;
+                });
+            
+            // Load FFT data
+            fetch(`/data/processed/analysis_iris-${irisId}.json`)
+                .then(response => {
+                    if (response.ok) {
+                        return response.json();
+                    }
+                    throw new Error('JSON not found');
+                })
+                .then(data => {
+                    if (data && data.waveform) {
+                        currentWaveform = data.waveform;
+                        document.getElementById('fft-info').textContent = 
+                            `Waveform: ${data.waveform.length} points | Energy: ${data.energy?.toFixed(2) || 'N/A'}`;
+                    }
+                })
+                .catch(() => {
+                    currentWaveform = [];
+                    document.getElementById('fft-info').textContent = 'FFT data not available';
+                });
+            
+            // Display latent code
+            if (currentIris.code) {
+                document.getElementById('code-display').textContent = currentIris.code;
+                const seed = currentIris.metadata?.seed || 'N/A';
+                document.getElementById('code-info').textContent = 
+                    `Seed: ${seed} | ID: ${currentIris.id}`;
+            }
+            
+            // Initialize renderer
+            if (!irisRenderer) {
+                irisRenderer = new DigitalIrisRenderer();
+            }
+        }
+        
+        // Display image in container (deprecated - now using direct fetch)
+        function displayImage(containerId, img) {
+            // This function is kept for compatibility but not used anymore
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            
+            const imgElement = document.createElement('img');
+            if (img && img.canvas) {
+                imgElement.src = img.canvas.toDataURL();
+            } else if (img && img.elt) {
+                imgElement.src = img.elt.src;
+            } else if (typeof img === 'string') {
+                imgElement.src = img;
+            }
+            imgElement.style.maxWidth = '100%';
+            imgElement.style.maxHeight = '100%';
+            imgElement.style.objectFit = 'contain';
+            container.appendChild(imgElement);
+        }
+        
+        // Setup FFT animation sketch
+        function setupFFTSketch() {
+            const container = document.getElementById('fft-container');
+            const width = container.clientWidth - 2;
+            const height = container.clientHeight - 2;
+            
+            fftSketch = new p5((p) => {
+                let fftP5Image = null;
+                
+                p.setup = function() {
+                    p.createCanvas(width, height);
+                    p.colorMode(p.HSB, 360, 100, 100);
+                };
+                
+                p.draw = function() {
+                    p.background(0, 0, 5);
+                    
+                    if (!currentIris) {
+                        p.fill(0, 0, 50);
+                        p.textAlign(p.CENTER);
+                        p.text('Select an iris to view FFT', width/2, height/2);
+                        return;
+                    }
+                    
+                    if (currentWaveform.length === 0 && !fftP5Image) {
+                        p.fill(0, 0, 50);
+                        p.textAlign(p.CENTER);
+                        p.text('Loading FFT data...', width/2, height/2);
+                        return;
+                    }
+                    
+                    animationTime += p.deltaTime * 0.001;
+                    
+                    const centerX = width / 2;
+                    const centerY = height / 2;
+                    const maxRadius = Math.min(width, height) / 2 - 20;
+                    
+                    // Load FFT image if available
+                    if (currentFFTImage && currentFFTImage.complete && currentFFTImage.src && !fftP5Image) {
+                        p.loadImage(currentFFTImage.src, (img) => {
+                            fftP5Image = img;
+                        });
+                    }
+                    
+                    // Draw FFT image if loaded
+                    if (fftP5Image) {
+                        p.push();
+                        p.translate(centerX, centerY);
+                        const pulse = p.sin(animationTime * 2) * 0.05 + 1.0;
+                        p.scale(pulse);
+                        p.tint(200, 50, 100);
+                        p.imageMode(p.CENTER);
+                        p.image(fftP5Image, 0, 0, maxRadius * 1.8, maxRadius * 1.8);
+                        p.pop();
+                    }
+                    
+                    // Draw animated waveform if available
+                    if (currentWaveform.length > 0) {
+                        p.stroke(200, 100, 100);
+                        p.strokeWeight(2);
+                        p.noFill();
+                        p.beginShape();
+                        
+                        const numPoints = currentWaveform.length;
+                        for (let i = 0; i < numPoints; i++) {
+                            const angle = (i / numPoints) * p.TWO_PI + animationTime;
+                            const radius = (currentWaveform[i] || 0) * maxRadius * 0.6;
+                            const x = centerX + p.cos(angle) * radius;
+                            const y = centerY + p.sin(angle) * radius;
+                            p.vertex(x, y);
+                        }
+                        p.endShape(p.CLOSE);
+                        
+                        // Draw center
+                        p.fill(200, 100, 100);
+                        p.noStroke();
+                        p.circle(centerX, centerY, 5);
+                    }
+                };
+            }, document.getElementById('fft-container'));
+        }
+        
+        // Setup Digital Iris animation sketch
+        function setupIrisSketch() {
+            const container = document.getElementById('iris-container');
+            const width = container.clientWidth - 2;
+            const height = container.clientHeight - 2;
+            
+            irisSketch = new p5((p) => {
+                p.setup = function() {
+                    p.createCanvas(width, height);
+                    p.colorMode(p.HSB, 360, 100, 100);
+                };
+                
+                p.draw = function() {
+                    p.background(0, 0, 5);
+                    
+                    if (!currentIris || !irisRenderer || !currentIris.code) {
+                        p.fill(0, 0, 50);
+                        p.textAlign(p.CENTER);
+                        p.text('Loading Digital Iris...', width/2, height/2);
+                        return;
+                    }
+                    
+                    irisRenderer.update(p.deltaTime * 0.001);
+                    const size = Math.min(width, height) * 0.9;
+                    irisRenderer.draw(currentIris.code, width/2, height/2, size);
+                    
+                    // Update info
+                    document.getElementById('iris-info').textContent = 
+                        `Animated | Size: ${size.toFixed(0)}px`;
+                };
+            }, document.getElementById('iris-container'));
+        }
+        
+        // Event listeners
+        document.getElementById('iris-select').addEventListener('change', (e) => {
+            const index = parseInt(e.target.value);
+            if (!isNaN(index)) {
+                loadIris(index);
+            }
+        });
+        
+        // Initialize
+        window.addEventListener('load', () => {
+            loadIrisData();
+            setupFFTSketch();
+            setupIrisSketch();
+        });
+        
+        // Handle window resize
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                if (fftSketch) fftSketch.remove();
+                if (irisSketch) irisSketch.remove();
+                setupFFTSketch();
+                setupIrisSketch();
+            }, 250);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IRIS#1 Architecture Diagram</title>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
+</head>
+<body>
+    <h1>IRIS#1 Architecture Diagram</h1>
+    <div class="mermaid">
+graph TD
+
+    %% --- Phase 1: Capture (Physical Input) ---
+
+    User((User)) -->|Gaze & Chin Rest| Camera["📷 Camera\nCanon 5D / A7R2"]
+
+    Camera -->|USB Tethering| Incoming[📂 Folder: /incoming]
+
+
+
+    %% --- Phase 2: Python Backend (The Brain) ---
+
+    subgraph "🐍 Python Backend (The Brain)"
+
+        Incoming -.->|Watchdog Detects| Watcher{{Watcher Script}}
+
+        Watcher -->|Trigger| Processor["⚙️ Image Processor\nOpenCV"]
+
+        
+
+        %% OpenCV Logic
+
+        Processor -->|Grayscale & Blur| PreOp(Pre-processing)
+
+        PreOp -->|Find Darkest Blob| PupilDet(Pupil Detection)
+
+        PupilDet -->|Dynamic Masking| Donut["🍩 Donut Masking\n(Safe Zone Extraction)"]
+
+        Donut -->|Crop 2048x2048| CropImg(Processed Iris Image)
+
+
+
+        %% Analysis Logic
+
+        CropImg -->|Pass Image| Analyzer["📊 FFT Analyzer\nNumPy"]
+
+        Analyzer -->|FFT Transform| Spectrum(2D Spectrum)
+
+        Spectrum -->|Radial Avg| Waveform(1D Waveform Array)
+
+        Spectrum -->|Hash Pixels| Seed(Unique Seed ID)
+        
+        %% Latent Code Generation
+        CropImg -->|Extract Features| CodeGen["🔑 Latent Code Generator\nlatent_code.py"]
+        Spectrum -->|FFT Features| CodeGen
+        CodeGen -->|Generate| LatentCode["📝 Latent Code\nIRIS/I?SEED=...GHO=..."]
+        
+        %% Codes Index Generation
+        LatentCode -->|Auto Update| IndexGen["📋 Codes Index Generator\ngenerate_codes_index.py"]
+        IndexGen -->|Create| CodesIndex["📄 codes_index.json"]
+
+    end
+
+
+
+    %% --- Phase 3: Data Handoff (Data Exchange) ---
+
+    CropImg -->|Save .jpg| OutFolder[📂 Folder: /processed]
+
+    Waveform & Seed -->|Save .json| OutFolder
+    
+    LatentCode -->|Save .txt/.json| CodesFolder[📂 Folder: /codes]
+    
+    CodesIndex -->|Save| CodesFolder
+
+
+
+    %% --- Phase 4: Frontend (Visual Presentation) ---
+
+    subgraph "🎨 p5.js Frontend (The Face)"
+
+        Server[🌐 HTTP Server\nstart_server.py] -->|Hosts| Sketch(sketch.js)
+
+        CodesIndex -.->|loadJSON<br/>Auto-refresh 5s| Sketch
+        
+        OutFolder -.->|loadJSON & loadImage| Sketch
+
+        Sketch -->|Parse Code| Renderer["🎨 Iris Renderer\niris_renderer.js"]
+        
+        Renderer -->|Map Parameters| Visual(Generative Iris)
+
+        Visual -->|Render| Screen["🖥️ Digital Wall / Monitor"]
+
+    end
+
+
+
+    %% Styles
+
+    style Incoming fill:#f9f,stroke:#333,stroke-width:2px
+
+    style OutFolder fill:#f9f,stroke:#333,stroke-width:2px
+    
+    style CodesFolder fill:#f9f,stroke:#333,stroke-width:2px
+    
+    style CodesIndex fill:#9f9,stroke:#333,stroke-width:2px
+
+    style Donut fill:#ff9,stroke:#f66,stroke-width:2px,stroke-dasharray: 5 5
+
+    style Analyzer fill:#ccf,stroke:#333,stroke-width:2px
+    
+    style CodeGen fill:#9cf,stroke:#333,stroke-width:2px
+    
+    style IndexGen fill:#cf9,stroke:#333,stroke-width:2px
+    
+    style Server fill:#fcf,stroke:#333,stroke-width:2px
+    </div>
+    
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .mermaid {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+    </style>
+</body>
+</html>
+

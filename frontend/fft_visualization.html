@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FFT Visualization - IRIS#1</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #0a0a0a;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+        }
+        h1 {
+            text-align: center;
+            color: #4ade80;
+        }
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        button {
+            background: #1a1a1a;
+            color: #4ade80;
+            border: 1px solid #4ade80;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+        }
+        button:hover {
+            background: #2a2a2a;
+        }
+        #info {
+            text-align: center;
+            margin: 10px 0;
+            color: #888;
+        }
+        .play-controls {
+            text-align: center;
+            margin: 15px 0;
+        }
+        .play-controls button {
+            background: #2a2a2a;
+            color: #4ade80;
+            border: 1px solid #4ade80;
+            padding: 8px 15px;
+            margin: 0 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        .play-controls button.active {
+            background: #4ade80;
+            color: #0a0a0a;
+        }
+        .slider-container {
+            text-align: center;
+            margin: 10px 0;
+            color: #888;
+        }
+        .slider-container input {
+            width: 200px;
+            margin: 0 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔬 FFT Visualization - IRIS#1</h1>
+    <div class="controls">
+        <button onclick="loadIris(1)">Iris 001</button>
+        <button onclick="loadIris(2)">Iris 002</button>
+        <button onclick="loadIris(3)">Iris 003</button>
+        <button onclick="loadIris(4)">Iris 004</button>
+        <button onclick="loadIris(5)">Iris 005</button>
+    </div>
+    <div class="play-controls">
+        <button id="playBtn" onclick="togglePlay()">▶ Play</button>
+        <button onclick="resetAnimation()">↻ Reset</button>
+    </div>
+    <div class="slider-container">
+        <label>Speed: <span id="speedValue">1.0x</span></label>
+        <input type="range" id="speedSlider" min="0.1" max="3" step="0.1" value="1" oninput="updateSpeed(this.value)">
+        <label style="margin-left: 20px;">Min Confidence: <span id="confValue">0.0</span></label>
+        <input type="range" id="confSlider" min="0" max="1" step="0.05" value="0.0" oninput="updateConfidence(this.value)">
+    </div>
+    <div id="info">Loading...</div>
+    <div id="sketch-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <script>
+        let currentWaveform = [];
+        let currentFFTImage = null;
+        let currentDonutImage = null;  // 甜甜圈原始图片
+        let currentIrisNum = 2;
+        let currentConfidence = 0.0;
+        let infoDiv;
+        
+        // Track image loading state
+        let donutImageLoaded = false;
+        let fftImageLoaded = false;
+        
+        // Animation variables
+        let animationTime = 0;
+        let isPlaying = false;
+        let animationSpeed = 1.0;
+        let minConfidence = 0.0;  // Default: show all images
+        let playButton;
+
+        function setup() {
+            try {
+                const canvas = createCanvas(1400, 700);
+                canvas.parent('sketch-container');
+                colorMode(HSB, 360, 100, 100);
+                
+                infoDiv = document.getElementById('info');
+                playButton = document.getElementById('playBtn');
+                
+                // Auto-start animation
+                isPlaying = true;
+                if (playButton) {
+                    playButton.textContent = "⏸ Pause";
+                    playButton.classList.add('active');
+                }
+                
+                // Load initial iris
+                loadIris(2);
+            } catch (error) {
+                console.error('Setup error:', error);
+                if (infoDiv) {
+                    infoDiv.textContent = `Error: ${error.message}`;
+                }
+            }
+        }
+
+        function draw() {
+            background(0, 0, 5); // Dark background
+            
+            // Update animation time (always update, even when paused, so we can see static state)
+            if (isPlaying) {
+                animationTime += deltaTime * animationSpeed * 0.001; // Convert to seconds
+            }
+            
+            // Always increment animation time slightly for visual feedback
+            if (!isPlaying && animationTime === 0) {
+                animationTime = 0.001; // Small initial value for static display
+            }
+            
+            // Draw layout: Donut Image | FFT Spectrum | Waveform
+            const leftX = 200;
+            const middleX = 500;
+            const rightX = 900;
+            const centerY = 250;
+            const imageSize = 300;
+            
+            // 1. Draw Donut Image (甜甜圈原始图片) - left side
+            if (currentDonutImage && currentDonutImage.width > 0 && currentDonutImage.height > 0) {
+                push();
+                translate(leftX, centerY);
+                imageMode(CENTER);
+                image(currentDonutImage, 0, 0, imageSize, imageSize);
+                
+                // Label
+                fill(0, 0, 100);
+                textAlign(CENTER);
+                textSize(14);
+                text("Donut Iris", 0, imageSize/2 + 20);
+                
+                // Quality indicator based on iris number
+                const irisId = String(currentIrisNum).padStart(3, '0');
+                const qualityIssues = ['001', '003']; // Known problematic irises
+                const hasQualityIssue = qualityIssues.includes(irisId);
+                
+                if (hasQualityIssue) {
+                    fill(0, 100, 100); // Red warning
+                    textSize(11);
+                    text("⚠ Quality Issue", 0, imageSize/2 + 35);
+                    text("(Center not empty)", 0, imageSize/2 + 50);
+                } else {
+                    fill(120, 100, 100); // Green OK
+                    textSize(11);
+                    text("✓ Good Quality", 0, imageSize/2 + 35);
+                }
+                
+                // Confidence badge
+                const confText = currentConfidence === 1.0 ? "N/A" : `${(currentConfidence * 100).toFixed(0)}%`;
+                const confColor = currentConfidence >= minConfidence ? 
+                    color(120, 100, 100) : color(0, 100, 100);
+                fill(confColor);
+                textSize(10);
+                text(`Confidence: ${confText}`, 0, imageSize/2 + 65);
+                pop();
+            } else {
+                // Show placeholder
+                push();
+                translate(leftX, centerY);
+                fill(0, 0, 30);
+                noStroke();
+                rect(-imageSize/2, -imageSize/2, imageSize, imageSize);
+                fill(0, 0, 60);
+                textAlign(CENTER);
+                textSize(12);
+                const statusText = currentDonutImage === null ? 
+                    `Loading donut image... (Iris ${String(currentIrisNum).padStart(3, '0')})` : 
+                    "Donut image failed";
+                text(statusText, 0, 0);
+                pop();
+            }
+            
+            // 2. Draw 2D FFT Spectrum - middle
+            if (currentFFTImage && currentFFTImage.width > 0 && currentFFTImage.height > 0) {
+                push();
+                translate(middleX, centerY);
+                imageMode(CENTER);
+                
+                // Add pulsing effect
+                const pulse = sin(animationTime * 2) * 0.05 + 1.0;
+                scale(pulse);
+                tint(100, 50, 100); // Slight color shift
+                image(currentFFTImage, 0, 0, imageSize, imageSize);
+                noTint();
+                
+                // Label
+                fill(0, 0, 100);
+                textAlign(CENTER);
+                textSize(14);
+                text("2D FFT Spectrum", 0, imageSize/2 + 20);
+                pop();
+            } else {
+                // Show placeholder
+                push();
+                translate(middleX, centerY);
+                fill(0, 0, 30);
+                noStroke();
+                rect(-imageSize/2, -imageSize/2, imageSize, imageSize);
+                fill(0, 0, 60);
+                textAlign(CENTER);
+                textSize(12);
+                const statusText = currentFFTImage === null ? 
+                    `Loading FFT... (Iris ${String(currentIrisNum).padStart(3, '0')})` : 
+                    "FFT image failed";
+                text(statusText, 0, 0);
+                pop();
+            }
+            
+            // 3. Draw 1D Waveform (right side) - dynamic
+            if (currentWaveform.length > 0) {
+                drawWaveform(rightX, centerY);
+            } else {
+                // Show placeholder if no waveform data
+                push();
+                translate(rightX, centerY - 50);
+                fill(0, 0, 30);
+                noStroke();
+                rect(-175, -150, 350, 300);
+                fill(0, 0, 60);
+                textAlign(CENTER);
+                textSize(12);
+                text("No waveform data", 0, 0);
+                pop();
+            }
+            
+            // Draw title with confidence indicator
+            fill(120, 80, 100);
+            textAlign(CENTER);
+            textSize(24);
+            const titleText = `Iris ${String(currentIrisNum).padStart(3, '0')} - Dynamic FFT Analysis`;
+            text(titleText, width / 2, 30);
+            
+            // Confidence filter indicator
+            fill(0, 0, 60);
+            textSize(12);
+            text(`Showing irises with confidence ≥ ${(minConfidence * 100).toFixed(0)}%`, width / 2, 50);
+            
+            // Debug info (can be removed later)
+            fill(0, 0, 40);
+            textSize(10);
+            textAlign(LEFT);
+            text(`Frame: ${frameCount} | Time: ${animationTime.toFixed(2)}s | Playing: ${isPlaying}`, 10, height - 20);
+            text(`Donut: ${currentDonutImage ? (currentDonutImage.width > 0 ? '✓' : '✗') : 'null'} | FFT: ${currentFFTImage ? (currentFFTImage.width > 0 ? '✓' : '✗') : 'null'} | Waveform: ${currentWaveform.length}`, 10, height - 10);
+        }
+
+        function drawWaveform(centerX, centerY) {
+            push();
+            translate(centerX, centerY - 50);
+            
+            const waveformWidth = 350;
+            const waveformHeight = 300;
+            const pointCount = currentWaveform.length;
+            
+            // Draw axes
+            stroke(0, 0, 50);
+            strokeWeight(1);
+            line(0, waveformHeight / 2, waveformWidth, waveformHeight / 2); // X-axis
+            line(0, 0, 0, waveformHeight); // Y-axis
+            
+            // Draw animated waveform with flowing effect
+            noFill();
+            stroke(200, 100, 100);
+            strokeWeight(2);
+            beginShape();
+            
+            // Add wave animation offset
+            const waveOffset = animationTime * 2;
+            
+            for (let i = 0; i < pointCount; i++) {
+                const x = map(i, 0, pointCount - 1, 0, waveformWidth);
+                // Add dynamic modulation based on animation time
+                const dynamicMod = sin((i * 0.1 + waveOffset) * 2) * 0.1;
+                const baseY = map(currentWaveform[i], 0, 1, waveformHeight, 0);
+                const y = baseY + dynamicMod * 20;
+                vertex(x, y);
+            }
+            
+            endShape();
+            
+            // Draw animated points with pulsing effect
+            for (let i = 0; i < pointCount; i++) {
+                const x = map(i, 0, pointCount - 1, 0, waveformWidth);
+                const baseY = map(currentWaveform[i], 0, 1, waveformHeight, 0);
+                const dynamicMod = sin((i * 0.1 + waveOffset) * 2) * 0.1;
+                const y = baseY + dynamicMod * 20;
+                
+                // Pulsing effect based on position and time
+                const pulse = sin((i * 0.2 + animationTime * 3)) * 0.3 + 0.7;
+                const size = 4 * pulse;
+                
+                // Color based on magnitude and animation
+                const hue = map(currentWaveform[i], 0, 1, 180, 280);
+                fill(hue, 100, 100);
+                noStroke();
+                circle(x, y, size);
+            }
+            
+            // Draw scanning line
+            const scanPos = (animationTime * 50) % waveformWidth;
+            stroke(60, 100, 100);
+            strokeWeight(2);
+            line(scanPos, 0, scanPos, waveformHeight);
+            
+            // Labels
+            fill(0, 0, 100);
+            textAlign(CENTER);
+            textSize(16);
+            text("1D Radial Waveform (Animated)", waveformWidth / 2, waveformHeight + 30);
+            textSize(12);
+            text("Frequency (radial distance)", waveformWidth / 2, waveformHeight + 50);
+            text("Magnitude", -30, waveformHeight / 2);
+            
+            // Draw frequency bands visualization (circular) - animated
+            translate(-175, waveformHeight / 2);
+            drawCircularWaveform();
+            
+            pop();
+        }
+
+        function drawCircularWaveform() {
+            // Draw circular representation of waveform with rotation
+            const radius = 150;
+            const pointCount = currentWaveform.length;
+            
+            // Rotate the entire pattern
+            rotate(animationTime * 0.5); // Slow rotation
+            
+            noFill();
+            stroke(120, 80, 100);
+            strokeWeight(1);
+            
+            // Draw concentric circles for reference with pulsing
+            for (let r = 0; r <= radius; r += radius / 8) {
+                const pulse = sin(animationTime * 2 + r * 0.1) * 0.1 + 1.0;
+                circle(0, 0, r * 2 * pulse);
+            }
+            
+            // Draw waveform as radial pattern with dynamic effects
+            for (let i = 0; i < pointCount; i++) {
+                const angle = map(i, 0, pointCount, 0, TWO_PI);
+                const baseMagnitude = currentWaveform[i];
+                
+                // Add dynamic modulation
+                const dynamicMod = sin(animationTime * 3 + i * 0.2) * 0.15;
+                const magnitude = constrain(baseMagnitude + dynamicMod, 0, 1);
+                const r = radius * magnitude;
+                
+                const x = cos(angle) * r;
+                const y = sin(angle) * r;
+                
+                // Color based on magnitude and animation
+                const hue = map(magnitude, 0, 1, 200, 280);
+                const brightness = map(magnitude, 0, 1, 50, 100);
+                
+                stroke(hue, 100, brightness);
+                strokeWeight(2 + magnitude * 2);
+                line(0, 0, x, y);
+                
+                // Pulsing point
+                const pulse = sin(animationTime * 5 + i * 0.3) * 0.3 + 0.7;
+                fill(hue, 100, 100);
+                noStroke();
+                circle(x, y, 4 * pulse);
+            }
+            
+            // Draw rotating center indicator
+            push();
+            rotate(animationTime * 2);
+            stroke(60, 100, 100);
+            strokeWeight(2);
+            line(0, -10, 0, 10);
+            line(-10, 0, 10, 0);
+            pop();
+            
+            // Label
+            fill(0, 0, 100);
+            textAlign(CENTER);
+            textSize(12);
+            text("Rotating Radial Pattern", 0, radius + 30);
+        }
+
+        async function loadIris(num) {
+            currentIrisNum = num;
+            const irisId = String(num).padStart(3, '0');
+            
+            // Reset image states
+            currentDonutImage = null;
+            currentFFTImage = null;
+            donutImageLoaded = false;
+            fftImageLoaded = false;
+            
+            infoDiv.textContent = `Loading Iris ${irisId}...`;
+            
+            try {
+                // Load waveform data
+                // Server runs from project root, HTML is in frontend/, so use relative path
+                const response = await fetch(`../data/processed/analysis_iris-${irisId}.json`);
+                if (!response.ok) {
+                    throw new Error(`Failed to load analysis data: ${response.status} - Path: ../data/processed/analysis_iris-${irisId}.json`);
+                }
+                
+                const data = await response.json();
+                currentWaveform = data.waveform || [];
+                currentConfidence = data.confidence;
+                
+                // If confidence is undefined (old data), set default to 1.0 (assume good)
+                if (currentConfidence === undefined || currentConfidence === null) {
+                    currentConfidence = 1.0; // Default: assume good quality for old data
+                }
+                
+                // Check confidence filter
+                if (currentConfidence < minConfidence) {
+                    infoDiv.textContent = `⚠ Iris ${irisId} - Confidence ${(currentConfidence * 100).toFixed(0)}% below threshold ${(minConfidence * 100).toFixed(0)}%`;
+                    currentWaveform = [];
+                    currentFFTImage = null;
+                    currentDonutImage = null;
+                    return;
+                }
+                
+                // Load Donut image (甜甜圈原始图片) - load this first
+                const donutImagePath = `../data/processed/iris-${irisId}.jpg`;
+                console.log(`[Iris ${irisId}] Loading donut image from: ${donutImagePath}`);
+                
+                // Reset image state
+                currentDonutImage = null;
+                donutImageLoaded = false;
+                
+                currentDonutImage = loadImage(donutImagePath,
+                    (img) => {
+                        console.log(`[Iris ${irisId}] ✓ Donut image loaded:`, img.width, 'x', img.height);
+                        donutImageLoaded = true;
+                        // Force redraw
+                        redraw();
+                        updateInfoText(irisId, data);
+                    },
+                    (err) => {
+                        console.error(`[Iris ${irisId}] ✗ Error loading donut image:`, err, 'Path:', donutImagePath);
+                        donutImageLoaded = false;
+                        currentDonutImage = null;
+                        updateInfoText(irisId, data);
+                    }
+                );
+                
+                // Load FFT image
+                const fftImagePath = `../data/fft/fft_iris-${irisId}.jpg`;
+                console.log(`[Iris ${irisId}] Loading FFT image from: ${fftImagePath}`);
+                
+                // Reset FFT image state
+                currentFFTImage = null;
+                fftImageLoaded = false;
+                
+                currentFFTImage = loadImage(fftImagePath,
+                    (img) => {
+                        console.log(`[Iris ${irisId}] ✓ FFT image loaded:`, img.width, 'x', img.height);
+                        fftImageLoaded = true;
+                        // Force redraw
+                        redraw();
+                        updateInfoText(irisId, data);
+                    },
+                    (err) => {
+                        console.warn(`[Iris ${irisId}] ✗ FFT image error:`, err);
+                        fftImageLoaded = false;
+                        currentFFTImage = null;
+                        updateInfoText(irisId, data);
+                    }
+                );
+                
+                // Validate waveform data
+                if (currentWaveform.length === 0) {
+                    console.warn(`[Iris ${irisId}] ⚠ No waveform data!`);
+                } else {
+                    console.log(`[Iris ${irisId}] ✓ Waveform loaded: ${currentWaveform.length} points, range: ${Math.min(...currentWaveform).toFixed(3)} - ${Math.max(...currentWaveform).toFixed(3)}`);
+                }
+                
+            } catch (error) {
+                console.error('Error loading iris data:', error);
+                infoDiv.textContent = `✗ Error loading Iris ${irisId}: ${error.message}`;
+            }
+        }
+        
+        function updateInfoText(irisId, data) {
+            const confText = currentConfidence === 1.0 && data.confidence === undefined ? 
+                "N/A (old data)" : `${(currentConfidence * 100).toFixed(0)}%`;
+            const donutStatus = donutImageLoaded ? "✓" : "✗";
+            const fftStatus = fftImageLoaded ? "✓" : "✗";
+            const playHint = !isPlaying ? " (Click Play to start animation)" : "";
+            infoDiv.textContent = `${donutStatus} Donut ${fftStatus} FFT | Iris ${irisId} - Confidence: ${confText}, Waveform: ${currentWaveform.length} points${playHint}`;
+        }
+        
+        function updateConfidence(value) {
+            minConfidence = parseFloat(value);
+            const confValue = document.getElementById('confValue');
+            if (confValue) {
+                confValue.textContent = minConfidence.toFixed(2);
+            }
+            // Reload current iris to apply filter
+            loadIris(currentIrisNum);
+        }
+
+        // Animation controls
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            if (playButton) {
+                playButton.textContent = isPlaying ? "⏸ Pause" : "▶ Play";
+                playButton.classList.toggle('active', isPlaying);
+            }
+        }
+        
+        function resetAnimation() {
+            animationTime = 0;
+        }
+        
+        function updateSpeed(value) {
+            animationSpeed = parseFloat(value);
+            const speedValue = document.getElementById('speedValue');
+            if (speedValue) {
+                speedValue.textContent = `${animationSpeed.toFixed(1)}x`;
+            }
+        }
+        
+        // Make functions available globally
+        window.loadIris = loadIris;
+        window.togglePlay = togglePlay;
+        window.resetAnimation = resetAnimation;
+        window.updateSpeed = updateSpeed;
+        window.updateConfidence = updateConfidence;
+    </script>
+</body>
+</html>
