@@ -208,25 +208,6 @@ Each iris generates a unique code. Parameters: SEED, GHO (brightness), GDH (cont
 - Frontend: ~90% complete ✅
 - Integration: ~90% complete ✅ (frontend reads codes from backend)
 
-## Work Log
-
-### 2024-12-01: Complete Integration
-- ✅ Created `generate_codes_index.py` to generate JSON index for frontend
-- ✅ Updated frontend to load codes from backend via HTTP
-- ✅ Added auto-refresh mechanism (every 5 seconds)
-- ✅ Created `start_server.py` for easy project serving
-- ✅ Backend automatically updates codes index when new codes are generated
-- ✅ Frontend supports multiple URL paths for different server setups
-- ✅ Complete end-to-end workflow: Backend → JSON → Frontend → Display
-
-### 2024-12-01: Extract Real Pupil, Get Donut Ring
-- ✅ Implemented robust pupil detection (multiple threshold strategies: OTSU, adaptive, simple)
-- ✅ Created Safe Zone ring extraction (donut mask: 1.1x to 2.2x pupil radius)
-- ✅ Upgraded output resolution to 2048x2048 pixels
-- ✅ Added automatic sequential file naming (iris-001.jpg, iris-002.jpg, ...)
-- ✅ High-quality image interpolation (LANCZOS4 for upscaling, CUBIC for downscaling)
-- ✅ Successfully extracts clean iris ring, avoiding eyelids and eyelashes
-
 ## Notes
 
 Learning project with beginner-friendly code structure and clear comments.
