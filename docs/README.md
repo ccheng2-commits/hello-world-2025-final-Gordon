@@ -208,6 +208,4 @@ Each iris generates a unique code. Parameters: SEED, GHO (brightness), GDH (cont
 - Frontend: ~90% complete ✅
 - Integration: ~90% complete ✅ (frontend reads codes from backend)
 
-## Notes
 
-Learning project with beginner-friendly code structure and clear comments.
